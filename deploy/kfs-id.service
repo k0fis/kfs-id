@@ -1,0 +1,15 @@
+[Unit]
+Description=kfs-id auth service
+After=network.target postgresql.service
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/java -jar /opt/id-backend/kfs-id-runner.jar
+WorkingDirectory=/opt/id-backend
+Environment=DB_PASSWORD=changeme
+Environment=JWT_SECRET=changeme
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
