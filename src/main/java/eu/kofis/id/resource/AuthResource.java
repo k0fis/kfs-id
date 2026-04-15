@@ -1,6 +1,7 @@
 package eu.kofis.id.resource;
 
 import eu.kofis.id.entity.User;
+import eu.kofis.id.entity.UserApp;
 import eu.kofis.id.service.JwtService;
 import jakarta.inject.Inject;
 import jakarta.transaction.Transactional;
@@ -12,6 +13,7 @@ import jakarta.ws.rs.Path;
 import jakarta.ws.rs.Produces;
 import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
+import java.util.List;
 import java.util.Map;
 import org.mindrot.jbcrypt.BCrypt;
 
@@ -35,10 +37,12 @@ public class AuthResource {
             return Response.status(401).entity(Map.of("error", "Invalid credentials")).build();
         }
 
-        String token = jwtService.generateToken(user.username);
+        List<String> apps = UserApp.appNamesForUser(user);
+        String token = jwtService.generateToken(user.username, apps);
         return Response.ok(Map.of(
                 "token", token,
                 "username", user.username,
+                "apps", apps,
                 "expiresIn", jwtService.getExpirySeconds()
         )).build();
     }
@@ -60,22 +64,29 @@ public class AuthResource {
         user.password = BCrypt.hashpw(request.password, BCrypt.gensalt());
         user.persist();
 
+        for (String app : List.of("manga", "akcie")) {
+            UserApp ua = new UserApp();
+            ua.user = user;
+            ua.app = app;
+            ua.persist();
+        }
+
         return Response.ok(Map.of("message", "User created", "username", user.username)).build();
     }
 
     @GET
     @Path("/verify")
     public Response verify(@HeaderParam("Authorization") String authHeader) {
-        String username = extractAndValidateToken(authHeader);
+        if (authHeader == null || !authHeader.startsWith("Bearer ")) {
+            return Response.status(401).entity(Map.of("error", "Invalid or expired token")).build();
+        }
+        String token = authHeader.substring(7);
+        String username = jwtService.validateToken(token);
         if (username == null) {
             return Response.status(401).entity(Map.of("error", "Invalid or expired token")).build();
         }
-        return Response.ok(Map.of("username", username, "valid", true)).build();
-    }
-
-    private String extractAndValidateToken(String authHeader) {
-        if (authHeader == null || !authHeader.startsWith("Bearer ")) return null;
-        return jwtService.validateToken(authHeader.substring(7));
+        List<String> apps = jwtService.extractApps(token);
+        return Response.ok(Map.of("username", username, "apps", apps, "valid", true)).build();
     }
 
     public static class LoginRequest {

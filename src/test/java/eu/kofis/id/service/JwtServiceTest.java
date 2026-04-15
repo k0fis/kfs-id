@@ -1,5 +1,6 @@
 package eu.kofis.id.service;
 
+import java.util.List;
 import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -7,7 +8,6 @@ class JwtServiceTest {
 
     private JwtService createService(String secret, int expiryDays) {
         JwtService svc = new JwtService();
-        // Inject config values directly via field access
         try {
             var secretField = JwtService.class.getDeclaredField("secret");
             secretField.setAccessible(true);
@@ -25,26 +25,41 @@ class JwtServiceTest {
     @Test
     void generateAndValidate() {
         JwtService svc = createService("my-test-secret", 30);
-        String token = svc.generateToken("kofis");
+        String token = svc.generateToken("kofis", List.of("manga", "akcie"));
         assertNotNull(token);
         assertEquals(3, token.split("\\.").length);
         assertEquals("kofis", svc.validateToken(token));
     }
 
     @Test
+    void generateTokenWithEmptyApps() {
+        JwtService svc = createService("my-test-secret", 30);
+        String token = svc.generateToken("kofis", List.of());
+        assertEquals("kofis", svc.validateToken(token));
+        assertEquals(List.of(), svc.extractApps(token));
+    }
+
+    @Test
+    void extractAppsFromToken() {
+        JwtService svc = createService("my-test-secret", 30);
+        String token = svc.generateToken("kofis", List.of("manga", "akcie"));
+        List<String> apps = svc.extractApps(token);
+        assertEquals(List.of("manga", "akcie"), apps);
+    }
+
+    @Test
     void validateRejectsWrongSecret() {
         JwtService svc1 = createService("secret-one", 30);
         JwtService svc2 = createService("secret-two", 30);
-        String token = svc1.generateToken("kofis");
+        String token = svc1.generateToken("kofis", List.of());
         assertNull(svc2.validateToken(token));
     }
 
     @Test
     void validateRejectsExpiredToken() {
         JwtService svc = createService("my-test-secret", 30);
-        // Build a token that expired 1 second ago
         long now = java.time.Instant.now().getEpochSecond();
-        String token = svc.buildJwt("kofis", now - 100, now - 1);
+        String token = svc.buildJwt("kofis", List.of("manga"), now - 100, now - 1);
         assertNull(svc.validateToken(token));
     }
 
@@ -59,8 +74,7 @@ class JwtServiceTest {
     @Test
     void validateRejectsTamperedPayload() {
         JwtService svc = createService("my-test-secret", 30);
-        String token = svc.generateToken("kofis");
-        // Tamper with the payload
+        String token = svc.generateToken("kofis", List.of("manga"));
         String[] parts = token.split("\\.");
         String tampered = parts[0] + "." + parts[1] + "X" + "." + parts[2];
         assertNull(svc.validateToken(tampered));
@@ -74,8 +88,7 @@ class JwtServiceTest {
 
     @Test
     void extractJsonFieldParsesCorrectly() {
-        assertEquals("kofis", JwtService.extractJsonField("{\"sub\":\"kofis\",\"role\":\"user\"}", "sub"));
-        assertEquals("user", JwtService.extractJsonField("{\"sub\":\"kofis\",\"role\":\"user\"}", "role"));
+        assertEquals("kofis", JwtService.extractJsonField("{\"sub\":\"kofis\",\"apps\":[]}", "sub"));
         assertNull(JwtService.extractJsonField("{\"sub\":\"kofis\"}", "missing"));
     }
 
@@ -87,9 +100,22 @@ class JwtServiceTest {
     }
 
     @Test
+    void extractJsonArrayParsesCorrectly() {
+        assertEquals(List.of("manga", "akcie"), JwtService.extractJsonArray("{\"apps\":[\"manga\",\"akcie\"],\"iat\":1}", "apps"));
+        assertEquals(List.of(), JwtService.extractJsonArray("{\"apps\":[],\"iat\":1}", "apps"));
+        assertEquals(List.of(), JwtService.extractJsonArray("{\"iat\":1}", "apps"));
+    }
+
+    @Test
     void usernameWithDots() {
         JwtService svc = createService("my-test-secret", 30);
-        String token = svc.generateToken("user.name");
+        String token = svc.generateToken("user.name", List.of("manga"));
         assertEquals("user.name", svc.validateToken(token));
+    }
+
+    @Test
+    void extractAppsFromInvalidToken() {
+        JwtService svc = createService("my-test-secret", 30);
+        assertEquals(List.of(), svc.extractApps("garbage"));
     }
 }

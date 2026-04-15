@@ -6,6 +6,7 @@ import javax.crypto.spec.SecretKeySpec;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.Base64;
+import java.util.List;
 import org.eclipse.microprofile.config.inject.ConfigProperty;
 
 @ApplicationScoped
@@ -19,10 +20,10 @@ public class JwtService {
     @ConfigProperty(name = "kfs.id.jwt.expiry-days", defaultValue = "30")
     int expiryDays;
 
-    public String generateToken(String username) {
+    public String generateToken(String username, List<String> apps) {
         long now = Instant.now().getEpochSecond();
         long exp = now + (long) expiryDays * 86400;
-        return buildJwt(username, now, exp);
+        return buildJwt(username, apps, now, exp);
     }
 
     public String validateToken(String token) {
@@ -41,13 +42,21 @@ public class JwtService {
         return sub;
     }
 
+    public List<String> extractApps(String token) {
+        String[] parts = token.split("\\.");
+        if (parts.length != 3) return List.of();
+        String payload = new String(Base64.getUrlDecoder().decode(parts[1]), StandardCharsets.UTF_8);
+        return extractJsonArray(payload, "apps");
+    }
+
     public long getExpirySeconds() {
         return (long) expiryDays * 86400;
     }
 
-    String buildJwt(String subject, long iat, long exp) {
+    String buildJwt(String subject, List<String> apps, long iat, long exp) {
+        String appsJson = "[" + String.join(",", apps.stream().map(a -> "\"" + escapeJson(a) + "\"").toList()) + "]";
         String header = base64Url("{\"alg\":\"HS256\",\"typ\":\"JWT\"}");
-        String payload = base64Url("{\"sub\":\"" + escapeJson(subject) + "\",\"role\":\"user\",\"iat\":" + iat + ",\"exp\":" + exp + "}");
+        String payload = base64Url("{\"sub\":\"" + escapeJson(subject) + "\",\"apps\":" + appsJson + ",\"iat\":" + iat + ",\"exp\":" + exp + "}");
         String signature = hmacSign(header + "." + payload);
         return header + "." + payload + "." + signature;
     }
@@ -79,6 +88,25 @@ public class JwtService {
         int end = json.indexOf("\"", start);
         if (end < 0) return null;
         return json.substring(start, end);
+    }
+
+    static List<String> extractJsonArray(String json, String field) {
+        String key = "\"" + field + "\":[";
+        int start = json.indexOf(key);
+        if (start < 0) return List.of();
+        start += key.length();
+        int end = json.indexOf("]", start);
+        if (end < 0) return List.of();
+        String inner = json.substring(start, end).trim();
+        if (inner.isEmpty()) return List.of();
+        List<String> result = new java.util.ArrayList<>();
+        for (String item : inner.split(",")) {
+            String trimmed = item.trim();
+            if (trimmed.startsWith("\"") && trimmed.endsWith("\"")) {
+                result.add(trimmed.substring(1, trimmed.length() - 1));
+            }
+        }
+        return result;
     }
 
     static long extractJsonLong(String json, String field) {
