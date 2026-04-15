@@ -4,9 +4,10 @@ jwt-check.py — Apache RewriteMap prg: script
 Validates JWT tokens (HMAC-SHA256) and returns comma-separated app list.
 
 Usage in Apache VHost:
-    RewriteMap jwtcheck "prg:/opt/id-backend/jwt-check.py"
+    RewriteMap jwtcheck "prg:/opt/idp/jwt-check.py"
 
-Reads JWT_SECRET from environment. Stdin: one token per line.
+Reads JWT_SECRET from env or /opt/idp/jwt-secret.env file.
+Stdin: one token per line.
 Stdout: comma-separated apps if valid, empty line if invalid.
 """
 import sys
@@ -17,7 +18,18 @@ import json
 import os
 import time
 
-SECRET = os.environ.get('JWT_SECRET', '').encode()
+SECRET_FILE = '/opt/idp/jwt-secret.env'
+
+def load_secret():
+    s = os.environ.get('JWT_SECRET', '')
+    if not s and os.path.exists(SECRET_FILE):
+        for line in open(SECRET_FILE):
+            if line.startswith('JWT_SECRET='):
+                s = line.split('=', 1)[1].strip()
+                break
+    return s.encode()
+
+SECRET = load_secret()
 
 def check_token(token):
     try:

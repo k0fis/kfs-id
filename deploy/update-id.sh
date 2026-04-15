@@ -8,7 +8,7 @@
 set -euo pipefail
 
 REPO="k0fis/kfs-id"
-INSTALL_DIR="/opt/id-backend"
+INSTALL_DIR="/opt/idp"
 JAR_NAME="kfs-id-runner.jar"
 SERVICE="kfs-id"
 
