@@ -2,6 +2,7 @@ package eu.kofis.id.resource;
 
 import eu.kofis.id.entity.User;
 import eu.kofis.id.entity.UserApp;
+import eu.kofis.id.entity.UserData;
 import io.quarkus.test.junit.QuarkusTest;
 import jakarta.transaction.Transactional;
 import jakarta.ws.rs.core.MediaType;
@@ -20,6 +21,7 @@ class UserResourceTest {
     @BeforeEach
     @Transactional
     void cleanup() {
+        UserData.deleteAll();
         UserApp.deleteAll();
         User.deleteAll();
     }
